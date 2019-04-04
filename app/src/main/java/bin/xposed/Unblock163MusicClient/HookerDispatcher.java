@@ -9,17 +9,16 @@ import java.util.List;
 
 import bin.xposed.Unblock163MusicClient.hooker.About;
 import bin.xposed.Unblock163MusicClient.hooker.Dislike;
+import bin.xposed.Unblock163MusicClient.hooker.DnsMod;
 import bin.xposed.Unblock163MusicClient.hooker.Download;
 import bin.xposed.Unblock163MusicClient.hooker.Eapi;
 import bin.xposed.Unblock163MusicClient.hooker.Gray;
 import bin.xposed.Unblock163MusicClient.hooker.HttpMod;
-import bin.xposed.Unblock163MusicClient.hooker.Oversea;
+import bin.xposed.Unblock163MusicClient.hooker.MagiskFix;
 import bin.xposed.Unblock163MusicClient.hooker.QualityBox;
 import bin.xposed.Unblock163MusicClient.hooker.TipsFor3rd;
 import bin.xposed.Unblock163MusicClient.hooker.Transparent;
-import bin.xposed.Unblock163MusicClient.ui.SettingsActivity;
 import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XC_MethodReplacement;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
@@ -30,99 +29,68 @@ public class HookerDispatcher implements IHookerDispatcher {
 
     @Override
     public void dispatch(XC_LoadPackage.LoadPackageParam lpparam) {
+        findAndHookMethod(findClass("com.netease.cloudmusic.NeteaseMusicApplication", lpparam.classLoader),
+                "attachBaseContext", Context.class, new XC_MethodHook() {
 
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
 
-        if (Handler.isDomainExpired()) {
-            return;
-        }
+                        Context context = (Context) param.thisObject;
+                        String processName = Utils.getCurrentProcessName(context);
+                        List<Hooker> hookers = null;
 
-        if (lpparam.packageName.equals(BuildConfig.APPLICATION_ID)) {
-            findAndHookMethod(findClass(SettingsActivity.class.getName(), lpparam.classLoader),
-                    "getActivatedModuleVersion", XC_MethodReplacement.returnConstant(BuildConfig.VERSION_CODE));
-        }
+                        if (processName.equals(CloudMusicPackage.PACKAGE_NAME)) {
+                            hookers = getMainProcessHookers();
 
-        if (lpparam.packageName.equals(CloudMusicPackage.PACKAGE_NAME)) {
-            findAndHookMethod(findClass("com.netease.cloudmusic.NeteaseMusicApplication", lpparam.classLoader),
-                    "attachBaseContext", Context.class, new XC_MethodHook() {
-
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-
-                            Context context = (Context) param.thisObject;
-
-                            if (isInMainProcess(context)) {
-                                CloudMusicPackage.init(context);
-                                hookMainProcess();
-
-                            } else if (isInPlayProcess(context)) {
-                                CloudMusicPackage.init(context);
-                                hookPlayProcess();
-                            }
-
+                        } else if (processName.equals(CloudMusicPackage.PACKAGE_NAME + ":play")) {
+                            hookers = getPlayProcessHookers();
                         }
-                    });
-        }
+
+                        if (hookers != null && hookers.size() > 0) {
+                            CloudMusicPackage.init(context);
+                            for (Hooker hooker : hookers) {
+                                hooker.startToHook();
+                            }
+                        }
+                    }
+                });
     }
 
-
-    private void hookMainProcess() {
+    private List<Hooker> getMainProcessHookers() {
         List<Hooker> list = new ArrayList<>();
+        list.add(new About());
         if (Settings.isUnblockEnabled()) {
             list.add(new Eapi());
             list.add(new Download());
             list.add(new HttpMod());
             list.add(new QualityBox());
             list.add(new TipsFor3rd());
-            list.add(new Transparent());
-            list.add(new About());
-
-
-            if (Settings.isOverseaModeEnabled()) {
-                list.add(new Oversea());
-            }
-
-
+            list.add(new DnsMod());
             if (Settings.isPreventGrayEnabled()) {
                 list.add(new Gray());
             }
-
         }
-
-
         if (Settings.isDislikeConfirmEnabled()) {
             list.add(new Dislike());
         }
-
-
-        for (Hooker hooker : list) {
-            hooker.startToHook();
+        if (Settings.isTransparentPlayerNavBar() || Settings.isTransparentBaseNavBar()) {
+            list.add(new Transparent());
         }
+        if (Settings.isMagiskFixEnabled()) {
+            list.add(new MagiskFix());
+        }
+        return list;
     }
 
-    private void hookPlayProcess() {
+    private List<Hooker> getPlayProcessHookers() {
         List<Hooker> list = new ArrayList<>();
         if (Settings.isUnblockEnabled()) {
             list.add(new Eapi());
             list.add(new HttpMod());
-
-
-            if (Settings.isOverseaModeEnabled()) {
-                list.add(new Oversea());
-            }
+            list.add(new DnsMod());
         }
-
-        for (Hooker hooker : list) {
-            hooker.startToHook();
-        }
+        return list;
     }
 
 
-    private boolean isInMainProcess(Context context) {
-        return Utils.getCurrentProcessName(context).equals(CloudMusicPackage.PACKAGE_NAME);
-    }
-
-
-    private boolean isInPlayProcess(Context context) {
-        return Utils.getCurrentProcessName(context).equals(CloudMusicPackage.PACKAGE_NAME + ":play");
-    }
 }

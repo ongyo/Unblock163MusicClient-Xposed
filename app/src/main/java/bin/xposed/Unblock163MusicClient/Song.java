@@ -1,34 +1,40 @@
 package bin.xposed.Unblock163MusicClient;
 
+import com.annimon.stream.ComparatorCompat;
+import com.annimon.stream.Stream;
+
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
+import static bin.xposed.Unblock163MusicClient.Utils.log;
 import static bin.xposed.Unblock163MusicClient.Utils.optString;
-import static de.robv.android.xposed.XposedBridge.log;
 
 class Song {
-    long id;
-    int code;
-    int br;
-    int fee;
-    String md5;
-    int payed;
-    long size;
-    String type;
-    JSONObject uf;
-    String url;
-    JSONObject freeTrialInfo;
 
-    String matchedPlatform;
-    String matchedSongName;
-    String matchedArtistName;
-    boolean matchedDuration;
-
+    private static ComparatorCompat<Song> preferComparator;
+    private long id;
+    private int code;
+    private int br;
+    private int fee;
+    private String md5;
+    private int payed;
+    private long size;
+    private String type;
+    private JSONObject uf;
+    private String url;
+    private JSONObject freeTrialInfo;
+    private String matchedPlatform;
+    private String matchedSongName;
+    private String matchedArtistName;
+    private boolean matchedDuration;
     private Boolean accessible;
 
-    static Song parseFromOther(JSONObject songJson) {
+    static Song parse(JSONObject songJson) {
         if (songJson == null) {
             return null;
         }
@@ -49,6 +55,20 @@ class Song {
         return song;
     }
 
+    static List<Song> parse(JSONArray songsJson) {
+        if (songsJson == null) {
+            return null;
+        }
+        ArrayList<Song> songs = new ArrayList<>();
+        for (int i = 0; i < songsJson.length(); i++) {
+            JSONObject obj = songsJson.optJSONObject(i);
+            if (obj != null) {
+                songs.add(parse(obj));
+            }
+        }
+        return songs;
+    }
+
     static Song parseFromDetail(JSONObject songJson, long id, int br) {
         Song song = new Song();
         long fid = songJson.optLong("fid");
@@ -64,24 +84,65 @@ class Song {
         return null;
     }
 
-    static Song getPreferSong(Song... songs) {
-        Song preferSong = null;
-
-        for (Song song : songs) {
-            if (song == null) {
-                continue;
-            }
-
-            if (preferSong == null) {
-                preferSong = song;
-                continue;
-            }
-
-            if (song.getPrefer() > preferSong.getPrefer()) {
-                preferSong = song;
+    static Song getPreferSong(List<Song> songs) {
+        if (preferComparator == null) {
+            if (Settings.isUpgradeBitrateFrom3rdParty()) {
+                preferComparator = ComparatorCompat.comparing(Song::isFullMatched).reversed()
+                        .thenComparing(ComparatorCompat.comparing(Song::getBr).reversed())
+                        .thenComparing(ComparatorCompat.comparing(Song::is3rdPartySong));
+            } else {
+                preferComparator = ComparatorCompat.comparing(Song::isFullMatched).reversed()
+                        .thenComparing(ComparatorCompat.comparing(Song::is3rdPartySong))
+                        .thenComparing(ComparatorCompat.comparing(Song::getBr).reversed());
             }
         }
-        return preferSong;
+
+        return Stream.of(songs).sorted(preferComparator)
+                .filterNot(Song::isFreeTrialFile)
+                .filter(Song::isAccessible)
+                .findFirst().orElse(null);
+
+    }
+
+
+    int getCode() {
+        return code;
+    }
+
+    long getId() {
+        return id;
+    }
+
+    String getMd5() {
+        return md5;
+    }
+
+    long getSize() {
+        return size;
+    }
+
+    String getType() {
+        return type;
+    }
+
+    String getUrl() {
+        return url;
+    }
+
+    String getMatchedArtistName() {
+        return matchedArtistName;
+    }
+
+    String getMatchedPlatform() {
+        return matchedPlatform;
+    }
+
+    String getMatchedSongName() {
+        return matchedSongName;
+    }
+
+    int getBr() {
+        return br;
     }
 
     void parseMatchInfo(JSONObject songJson) {
@@ -106,8 +167,7 @@ class Song {
                     accessible = true;
                 }
             } catch (Throwable t) {
-                log(id + "\n" + br + "\n" + url);
-                log(t);
+                log(String.format("%s %s %s %s", t.getMessage(), id, br, url), t);
             }
         }
         return accessible;
@@ -136,8 +196,8 @@ class Song {
     }
 
 
-    private boolean is3rdMatchedDuration() {
-        return matchedDuration;
+    private boolean isFullMatched() {
+        return !is3rdPartySong() || matchedDuration;
     }
 
     JSONObject getMatchedJson() throws JSONException {
@@ -147,19 +207,5 @@ class Song {
                 .put("matchedArtistName", matchedArtistName);
     }
 
-    int getPrefer() {
-        if (!isAccessible()) {
-            return 0;
-        }
 
-        int prefer = br;
-        if (is3rdPartySong()) {
-            prefer--;
-            if (!is3rdMatchedDuration()) {
-                prefer = 1;
-            }
-        }
-
-        return prefer;
-    }
 }

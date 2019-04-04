@@ -46,7 +46,7 @@ import static de.robv.android.xposed.XposedHelpers.findClass;
 @SuppressWarnings({"unused", "WeakerAccess"})
 public class Utils {
     private static final String TAG = "unblock163";
-    private static Map<String, InetAddress[]> dnsCache = new HashMap<>();
+    private static final Map<String, InetAddress[]> dnsCache = new HashMap<>();
     private static WeakReference<Resources> moduleResources = new WeakReference<>(null);
 
     static String getFirstPartOfString(String str, String separator) {
@@ -109,11 +109,19 @@ public class Utils {
                 .collect(Collectors.joining("; "));
     }
 
-    public static InetAddress[] getIpByHostViaHttpDns(String domain) throws IOException, InvocationTargetException, IllegalAccessException, JSONException, PackageManager.NameNotFoundException {
+    public static InetAddress[] getIpByHostPretendInChina(String domain) throws IOException, InvocationTargetException, IllegalAccessException, JSONException, PackageManager.NameNotFoundException {
+        return getIpByHostViaHttpDns(domain, "119.29.29.29");
+    }
+
+    public static InetAddress[] getIpByHostPretendOverSea(String domain) throws IOException, InvocationTargetException, IllegalAccessException, JSONException, PackageManager.NameNotFoundException {
+        return getIpByHostViaHttpDns(domain, "45.30.1.1");
+    }
+
+    public static InetAddress[] getIpByHostViaHttpDns(String domain, String pretendIp) throws IOException, InvocationTargetException, IllegalAccessException, JSONException, PackageManager.NameNotFoundException {
         if (dnsCache.containsKey(domain)) {
             return dnsCache.get(domain);
         } else {
-            String raw = Http.get(String.format("http://119.29.29.29/d?dn=%s&ip=119.29.29.29", domain), false)
+            String raw = Http.get(String.format("http://119.29.29.29/d?dn=%s&ip=%s", domain, pretendIp), false)
                     .getResponseText();
             String[] ss = raw.replaceAll("[ \r\n]", "").split(";");
 
@@ -196,12 +204,12 @@ public class Utils {
         Files.asCharSink(file, Charsets.UTF_8).write(string);
     }
 
-    static File findFirstFile(File dir, final String start, final String end) {
+    static File findFirstFile(File dir, String start, String end) {
         File[] fs = findFiles(dir, start, end, 1);
         return fs != null && fs.length > 0 ? fs[0] : null;
     }
 
-    static File[] findFiles(File dir, final String start, final String end, final Integer limit) {
+    static File[] findFiles(File dir, String start, String end, Integer limit) {
         if (dir != null && dir.exists() && dir.isDirectory()) {
             return dir.listFiles(new FilenameFilter() {
                 int find = 0;
@@ -232,8 +240,10 @@ public class Utils {
     }
 
     static void deleteFiles(File[] files) {
-        for (File file : files) {
-            deleteFile(file);
+        if (files != null) {
+            for (File file : files) {
+                deleteFile(file);
+            }
         }
     }
 
@@ -272,27 +282,6 @@ public class Utils {
         }
     }
 
-    public static boolean isCallFromMyself() {
-        StackTraceElement[] elements = Thread.currentThread().getStackTrace();
-        boolean findAppStack = false;
-        boolean findModStack = false;
-
-        for (StackTraceElement element : elements) {
-            if (!findAppStack && element.getClassName().startsWith(BuildConfig.APPLICATION_ID)) {
-                findAppStack = true;
-                continue;
-            }
-            if (findAppStack && element.getClassName().startsWith(CloudMusicPackage.PACKAGE_NAME)) {
-                findModStack = true;
-                continue;
-            }
-            if (findModStack && element.getClassName().startsWith(BuildConfig.APPLICATION_ID)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     public static void postDelayed(Runnable runnable, long delay) {
         new android.os.Handler(getMainLooper()).postDelayed(runnable, delay);
     }
@@ -313,6 +302,19 @@ public class Utils {
             }
         }
         throw new RuntimeException("can't get current process name");
+    }
+
+    public static void log(Throwable t) {
+        log("", t);
+    }
+
+
+    public static void log(String message, Throwable t) {
+        if (t.getMessage().toLowerCase().contains("timeout")) {
+            log(t.getMessage() + " " + message);
+        } else {
+            Log.e(TAG, message, t);
+        }
     }
 
     public static void log(String content) {
